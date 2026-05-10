@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frise Chronologique</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f0f2f5;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+.header{background:#1e3a5f;color:white;padding:9px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.header h1{font-size:1.05rem;font-weight:600}
+
+/* ── Split layout ─────────────────────────────────────────── */
+.layout{display:flex;flex-direction:column;flex:1;overflow:hidden}
+
+.top-panel{display:flex;flex-direction:column;overflow:hidden;min-height:60px}
+.bottom-panel{display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:60px}
+
+.divider{height:7px;background:#e5e7eb;cursor:ns-resize;flex-shrink:0;
+  border-top:1px solid #d1d5db;border-bottom:1px solid #d1d5db;
+  display:flex;align-items:center;justify-content:center;gap:3px}
+.divider::before,.divider::after{content:'';width:24px;height:2px;background:#9ca3af;border-radius:1px}
+.divider:hover,.divider.active{background:#dbeafe}
+.divider:hover::before,.divider:hover::after,
+.divider.active::before,.divider.active::after{background:#3b82f6}
+
+/* ── Tabs ─────────────────────────────────────────────────── */
+.tabs-bar{display:flex;border-bottom:1px solid #d1d5db;background:#f9fafb;flex-shrink:0}
+.tab-btn{padding:7px 16px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;font-size:.875rem;color:#6b7280;transition:all .15s}
+.tab-btn:hover{color:#1e3a5f}
+.tab-btn.active{color:#1e3a5f;border-bottom-color:#1e3a5f;font-weight:600}
+.tab-pane{flex:1;display:none;flex-direction:column;overflow:hidden}
+.tab-pane.active{display:flex}
+
+/* ── Text pane ────────────────────────────────────────────── */
+#pane-text{padding:10px;gap:6px}
+.csv-help{font-size:.72rem;color:#6b7280;line-height:1.5;flex-shrink:0}
+.csv-help code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-family:monospace}
+#csv-input{flex:1;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:8px;
+  font-family:'Courier New',monospace;font-size:.78rem;resize:none;outline:none;
+  line-height:1.5;color:#1f2937;min-height:0}
+#csv-input:focus{border-color:#1e3a5f;box-shadow:0 0 0 2px rgba(30,58,95,.1)}
+
+/* ── Table pane ───────────────────────────────────────────── */
+#pane-table{overflow:hidden}
+.table-scroll{flex:1;overflow:auto}
+.items-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.items-table th{background:#f3f4f6;padding:5px 6px;text-align:left;font-size:.7rem;
+  color:#6b7280;text-transform:uppercase;letter-spacing:.04em;
+  position:sticky;top:0;z-index:1;border-bottom:1px solid #d1d5db;white-space:nowrap}
+.items-table td{padding:1px 2px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
+.items-table tr:hover td{background:#f9fafb}
+.items-table input,.items-table select{width:100%;border:1px solid transparent;border-radius:3px;
+  padding:3px 5px;font-size:.78rem;background:transparent;outline:none;color:#1f2937}
+.items-table input:focus,.items-table select:focus{border-color:#1e3a5f;background:white}
+.col-color-wrap{display:flex;align-items:center;gap:3px}
+.color-dot{width:11px;height:11px;border-radius:2px;border:1px solid rgba(0,0,0,.2);flex-shrink:0}
+.btn-del{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.85rem;padding:2px 6px;border-radius:3px;line-height:1}
+.btn-del:hover{color:#ef4444;background:#fef2f2}
+.btn-type{border:none;border-radius:4px;padding:3px 7px;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
+.btn-type.period{background:#dbeafe;color:#1e3a5f}
+.btn-type.period:hover{background:#bfdbfe}
+.btn-type.event{background:#dcfce7;color:#166534}
+.btn-type.event:hover{background:#bbf7d0}
+.table-footer{padding:6px 10px;border-top:1px solid #d1d5db;background:#f9fafb;display:flex;gap:6px;flex-shrink:0}
+.color-cell{position:relative}
+.color-swatch-btn{width:24px;height:24px;border-radius:4px;border:1.5px solid rgba(0,0,0,.2);cursor:pointer;display:block}
+.color-swatch-btn:hover{border-color:rgba(0,0,0,.4)}
+#color-picker-popup{position:fixed;z-index:9999;background:white;border:1px solid #d1d5db;border-radius:8px;padding:8px;display:none;grid-template-columns:repeat(10,22px);gap:4px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+#color-picker-popup .sw{width:22px;height:22px;border-radius:3px;border:1.5px solid rgba(0,0,0,.15);cursor:pointer;transition:transform .1s}
+#color-picker-popup .sw:hover{transform:scale(1.25);border-color:rgba(0,0,0,.4)}
+#color-picker-popup .sw.selected{outline:2px solid #1e3a5f;outline-offset:1px}
+.btn-sm{padding:5px 11px;border-radius:5px;font-size:.78rem;cursor:pointer;border:1px solid #d1d5db;background:white;color:#374151}
+.btn-sm:hover{background:#f3f4f6}
+.btn-sm.primary{background:#1e3a5f;color:white;border-color:#1e3a5f}
+.btn-sm.primary:hover{background:#2d4e7e}
+
+/* ── Bottom / preview ─────────────────────────────────────── */
+.bottom-toolbar{padding:7px 14px;background:white;border-bottom:1px solid #d1d5db;
+  display:flex;align-items:center;gap:10px;flex-shrink:0}
+.btn-copy{display:flex;align-items:center;gap:6px;padding:6px 14px;background:#1e3a5f;
+  color:white;border:none;border-radius:6px;font-size:.85rem;cursor:pointer}
+.btn-copy:hover{background:#2d4e7e}
+.copy-ok{font-size:.8rem;color:#059669;opacity:0;transition:opacity .3s}
+.copy-ok.show{opacity:1}
+.preview-area{flex:1;overflow:auto;padding:14px;background:#f0f2f5}
+.timeline-wrapper{background:white;border-radius:8px;padding:14px;
+  box-shadow:0 1px 3px rgba(0,0,0,.08);overflow-x:auto}
+#svg-out{display:block}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg width="20" height="14" viewBox="0 0 20 14"><rect x="0" y="6" width="18" height="2" fill="white" rx="1"/><polygon points="18,4 20,7 18,10" fill="white"/><rect x="2" y="6" width="4" height="2" fill="#4ade80"/><rect x="6" y="6" width="4" height="2" fill="#60a5fa"/><rect x="10" y="6" width="3" height="2" fill="#f9a8d4"/></svg>
+  <h1>Générateur de Frise Chronologique</h1>
+</div>
+
+<div class="layout" id="layout">
+
+  <!-- ── Top : editor ── -->
+  <div class="top-panel" id="top-panel">
+    <div class="tabs-bar">
+      <button class="tab-btn active" id="btn-table" onclick="switchTab('table')">Tableau</button>
+      <button class="tab-btn" id="btn-text" onclick="switchTab('text')">Texte CSV</button>
+    </div>
+
+    <div class="tab-pane" id="pane-text">
+      <div class="csv-help">
+        <b>Période :</b> <code>date1, date2, label, couleur[, url]</code> &nbsp;·&nbsp;
+        <b>Événement :</b> <code>date, label, couleur[, url]</code> &nbsp;·&nbsp;
+        Dates : <code>dd/mm/aaaa</code> · <code>mm/aaaa</code> · <code>aaaa</code> · <code>en cours</code>
+      </div>
+      <textarea id="csv-input" spellcheck="false"></textarea>
+    </div>
+
+    <div class="tab-pane active" id="pane-table">
+      <div class="table-scroll">
+        <table class="items-table">
+          <thead><tr>
+            <th style="width:24px"><input type="checkbox" id="chk-all" onchange="toggleSelectAll(this.checked)"></th>
+            <th style="width:74px">Type</th>
+            <th style="width:96px">Début</th>
+            <th style="width:96px">Fin</th>
+            <th style="min-width:200px">Label</th>
+            <th style="width:100px">Couleur</th>
+            <th style="min-width:120px">Lien</th>
+            <th style="width:28px"></th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <button class="btn-sm primary" onclick="addRow()">+ Ligne</button>
+        <button class="btn-sm" style="color:#ef4444;border-color:#fca5a5" onclick="clearAll()">Tout effacer</button>
+        <div id="sel-toolbar" style="display:none;align-items:center;gap:8px;margin-left:auto">
+          <span id="sel-count" style="font-size:.75rem;color:#6b7280"></span>
+          <button class="color-swatch-btn" id="bulk-color-btn" title="Changer la couleur" onclick="toggleColorPicker(-1,event)" style="background:#d1d5db"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Divider ── -->
+  <div class="divider" id="divider"></div>
+
+  <!-- ── Bottom : preview ── -->
+  <div class="bottom-panel" id="bottom-panel">
+    <div class="bottom-toolbar">
+      <button class="btn-copy" onclick="copyHTML()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="white" stroke-width="1.4" fill="none"/><path d="M1 1h6v1" stroke="white" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+        Copier le HTML
+      </button>
+      <span class="copy-ok" id="copy-ok">✓ Copié !</span>
+      <div style="display:flex;align-items:center;gap:7px;margin-left:auto;font-size:.8rem;color:#6b7280">
+        <span>Largeur</span>
+        <input type="range" id="width-range" min="500" max="4000" step="50" value="1700"
+          style="width:130px;accent-color:#1e3a5f" oninput="setTimelineWidth(this.value)">
+        <span id="width-disp" style="min-width:32px;text-align:right">1700</span><span>px</span>
+      </div>
+    </div>
+    <div class="preview-area">
+      <div class="timeline-wrapper">
+        <div id="svg-out"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const ML = 50, MR = 60;
+let svgW = 1700;
+const AY = 155, AH = 44, AY1 = AY - AH/2, AY2 = AY + AH/2;
+const LF = 12, LLH = 16, LP = 4, LGAP = 17, CL = 27;
+const TICK_BOT = AY2 + 33; // min y-top for below (period) labels, clears tick area
+
+// ── Default CSV ──────────────────────────────────────────────────────────────
+const DEFAULT = `08/01/1959, 28/04/1969, Charles de Gaulle, lightskyblue
+20/06/1969, 02/04/1974, Georges Pompidou, lightskyblue
+27/05/1974, 21/05/1981, Valéry Giscard d'Estaing, lightskyblue
+21/05/1981, 17/05/1995, François Mitterrand, hotpink
+17/05/1995, 16/05/2007, Jacques Chirac, lightskyblue, https://fr.wikipedia.org/wiki/Jacques_Chirac
+16/05/2007, 15/05/2012, Nicolas Sarkozy, lightskyblue
+15/05/2012, 14/05/2017, François Hollande, hotpink
+14/05/2017, en cours, Emmanuel Macron, darkorange
+13/05/1958, Crise de mai 1958, crimson
+04/10/1958, Constitution de la Ve République, indigo
+10/05/1981, Élection de François Mitterrand, indigo
+29/05/1968, Crise de Mai 68, crimson, https://fr.wikipedia.org/wiki/Mai_68
+16/07/1995, Discours du Vel d'Hiv, indigo
+20/09/1992, Référendum Maastricht, indigo
+21/04/2002, Le Pen au second tour, crimson
+07/01/2015, Attentat Charlie Hebdo, black
+13/11/2015, Attentats du 13 novembre, black
+17/11/2018, Gilets jaunes, crimson`;
+
+// ── Date parsing ─────────────────────────────────────────────────────────────
+function isDateStr(s) {
+  s = s.trim();
+  return /^en cours$/i.test(s)
+    || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)
+    || /^\d{1,2}\/\d{4}$/.test(s)
+    || /^\d{4}$/.test(s);
+}
+
+function parseDate(s) {
+  s = s.trim();
+  if (/^en cours$/i.test(s)) { const d = new Date(); d._ec = true; return d; }
+  const p = s.split('/');
+  if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
+  if (p.length === 2) return new Date(+p[1], +p[0]-1, 15);
+  return new Date(+p[0], 6, 1);
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  if (d._ec) return 'en cours';
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+// ── CSV parsing ──────────────────────────────────────────────────────────────
+function parseCSV(txt) {
+  const out = [];
+  for (const raw of txt.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const p = line.split(',').map(s => s.trim());
+    if (p.length >= 3 && isDateStr(p[0]) && isDateStr(p[1])) {
+      out.push({ type:'period', start:parseDate(p[0]), end:parseDate(p[1]),
+        label:p[2]||'', color:p[3]||'lightblue', url:p[4]||'' });
+    } else if (p.length >= 2 && isDateStr(p[0])) {
+      out.push({ type:'event', date:parseDate(p[0]),
+        label:p[1]||'', color:p[2]||'steelblue', url:p[3]||'' });
+    }
+  }
+  return out;
+}
+
+function toCSV(items) {
+  return items.map(it => {
+    if (it.type === 'period') {
+      const a = [fmtDate(it.start), fmtDate(it.end), it.label, it.color];
+      if (it.url) a.push(it.url);
+      return a.join(', ');
+    }
+    const a = [fmtDate(it.date), it.label, it.color];
+    if (it.url) a.push(it.url);
+    return a.join(', ');
+  }).join('\n');
+}
+
+// ── SVG helpers ──────────────────────────────────────────────────────────────
+function xa(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function xt(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+const _twCanvas = document.createElement('canvas');
+const _twCtx = _twCanvas.getContext('2d');
+function tw(str, fz) {
+  _twCtx.font = `${fz}px system-ui,-apple-system,sans-serif`;
+  return _twCtx.measureText(str).width;
+}
+
+function wrap(str, maxW, fz) {
+  if (tw(str, fz) <= maxW) return [str];
+  const words = str.split(' '), lines = [];
+  let cur = '';
+  for (const w of words) {
+    const t = cur ? cur+' '+w : w;
+    if (tw(t, fz) > maxW && cur) { lines.push(cur); cur = w; }
+    else cur = t;
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [str];
+}
+
+function resolveRGB(color) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = color || '#374151';
+  ctx.fillRect(0, 0, 1, 1);
+  const d = ctx.getImageData(0, 0, 1, 1).data;
+  return [d[0], d[1], d[2]];
+}
+function darkenColor(color, amount) {
+  const [r, g, b] = resolveRGB(color);
+  const rn = r/255, gn = g/255, bn = b/255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+    else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+    else h = ((rn - gn) / d + 4) / 6;
+  }
+  l = Math.max(0, l - amount);
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  let r2, g2, b2;
+  if (s === 0) { r2 = g2 = b2 = l; }
+  else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    r2 = hue2rgb(p, q, h + 1/3); g2 = hue2rgb(p, q, h); b2 = hue2rgb(p, q, h - 1/3);
+  }
+  const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
+  return `#${hex(r2)}${hex(g2)}${hex(b2)}`;
+}
+function textOnColor(color) {
+  const [r, g, b] = resolveRGB(color);
+  const lin = c => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return L < 0.35 ? 'white' : '#000000';
+}
+
+// ── SVG generation ───────────────────────────────────────────────────────────
+function buildSVG(items) {
+  if (!items.length) return '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="60"><text x="200" y="35" text-anchor="middle" fill="#9ca3af" font-family="system-ui" font-size="13">Aucun item</text></svg>';
+
+  const DW = svgW - ML - MR;
+  let tMin = Infinity, tMax = -Infinity;
+  for (const it of items) {
+    if (it.type === 'period') { tMin = Math.min(tMin, it.start.getTime()); tMax = Math.max(tMax, it.end.getTime()); }
+    else { tMin = Math.min(tMin, it.date.getTime()); tMax = Math.max(tMax, it.date.getTime()); }
+  }
+  const rng = tMax - tMin || 1;
+  tMin -= rng * 0.03; tMax += rng * 0.05;
+
+  function dx(d) { return ML + (d.getTime() - tMin) / (tMax - tMin) * DW; }
+
+  // Year ticks
+  const y0 = new Date(tMin).getFullYear(), y1 = new Date(tMax).getFullYear();
+  const span = y1 - y0;
+  const step = span > 80 ? 20 : span > 40 ? 10 : span > 20 ? 5 : span > 10 ? 2 : 1;
+  const ticks = [];
+  for (let y = Math.ceil(y0/step)*step; y <= y1; y += step) {
+    const x = ML + (new Date(y,0,1).getTime() - tMin) / (tMax - tMin) * DW;
+    if (x > ML-1 && x < ML+DW+1) ticks.push({x, y});
+  }
+
+  const mapped = items.map(it => it.type === 'period'
+    ? {...it, x:dx(it.start), x2:dx(it.end)}
+    : {...it, x:dx(it.date), x2:dx(it.date)}
+  );
+
+  // Label placement: periods below, events above
+  // Uses exact bounding-box collision detection so labels of different heights
+  // never overlap regardless of insertion order.
+  const LW = 140;
+  const abovePlaced = [], belowPlaced = []; // {lx, lx2, ly, lh}
+  const placed = [];
+
+  const TAG_FONT = 12, TAG_H = 17, TAG_GAP = 3, TAG_HP = 4; // tag constants
+
+  function fmtTag(it) {
+    return it.type === 'event'
+      ? fmtDate(it.date)
+      : `${fmtDate(it.start)} – ${fmtDate(it.end)}`;
+  }
+
+  function placeLabel(it, side) {
+    const cx = it.type === 'period' ? (it.x + it.x2) / 2 : it.x;
+    const lines = wrap(it.label, LW, LF);
+    // Events: right-align label to connector (lx2 = cx); periods: center on midpoint
+
+    const dateTag = fmtTag(it);
+    const tagContentW = tw(dateTag, TAG_FONT) + TAG_HP * 2;
+
+    // lw must accommodate label text AND tag pill (+ 7px icon + margins when URL)
+    const lp = it.type === 'event' ? 0 : LP;
+    const tgap = it.type === 'event' ? TAG_GAP - 1 : TAG_GAP;
+    let lw, lh;
+    if (it.type === 'event') {
+      const textW = Math.max(...lines.map(l => tw(l, LF)));
+      lw = tagContentW + TAG_HP + textW;
+      lh = Math.max(TAG_H, lines.length * LLH);
+    } else {
+      const lw_text = Math.max(...lines.map(l => tw(l, LF)));
+      const lw_tag  = it.url ? tagContentW + 5 : Math.max(tagContentW - 6, 0);
+      lw = Math.max(lw_text, lw_tag);
+      lh = lines.length * LLH + lp * 2 + tgap + TAG_H;
+    }
+    const lx  = it.type === 'event' ? cx - 5         : cx - lw / 2;
+    const lx2 = it.type === 'event' ? cx - 5 + lw    : cx + lw / 2;
+
+    const pool = side === 'above' ? abovePlaced : belowPlaced;
+    let ly = side === 'above' ? AY1 - CL - lh : TICK_BOT;
+
+    for (let guard = 0; guard < 40; guard++) {
+      const blocking = pool.filter(p =>
+        !(lx2 + 3 < p.lx || lx - 3 > p.lx2) &&
+        !(ly > p.ly + p.lh + LGAP || ly + lh + LGAP < p.ly)
+      );
+      if (!blocking.length) break;
+      if (side === 'above') {
+        ly = Math.min(...blocking.map(p => p.ly)) - lh - LGAP;
+      } else {
+        ly = Math.max(...blocking.map(p => p.ly + p.lh)) + LGAP;
+      }
+    }
+
+    pool.push({lx, lx2, ly, lh});
+    placed.push({it, cx, lx, lx2, lw, lh, ly, lines, side, dateTag, tagContentW, lp, tgap});
+  }
+
+  const sortedPeriods = mapped.filter(it => it.type === 'period')
+    .sort((a, b) => (a.x + a.x2)/2 - (b.x + b.x2)/2);
+  const sortedEvents = mapped.filter(it => it.type === 'event')
+    .sort((a, b) => a.x - b.x);
+
+  for (const it of sortedPeriods) placeLabel(it, 'below');
+  for (const it of sortedEvents)  placeLabel(it, 'above');
+
+  let topY = AY1 - 10, botY = TICK_BOT + 8;
+  for (const p of placed) {
+    if (p.side === 'above') topY = Math.min(topY, p.ly - 8);
+    else botY = Math.max(botY, p.ly + p.lh + 8);
+  }
+  const svgH = botY - topY + 4;
+
+  const ax = ML + DW;
+  const timelinePath = `M ${ML} ${AY1} L ${ax} ${AY1} L ${ax+14} ${AY} L ${ax} ${AY2} L ${ML} ${AY2} Z`;
+
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${topY.toFixed(1)} ${svgW} ${svgH.toFixed(1)}" width="${svgW}" style="max-width:100%;display:block" font-family="system-ui,sans-serif">\n`;
+  s += `<style>a.lbl{cursor:pointer}a.lbl .lb{transition:filter .15s}a.lbl:hover .lb{filter:brightness(.88)}</style>\n`;
+  s += `<defs>
+    <linearGradient id="tl-base-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8fbff"/>
+      <stop offset="40%" stop-color="#e7eef8"/>
+      <stop offset="72%" stop-color="#d2dced"/>
+      <stop offset="100%" stop-color="#b8c7de"/>
+    </linearGradient>
+    <linearGradient id="tl-shine-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="white" stop-opacity="0.58"/>
+      <stop offset="26%" stop-color="white" stop-opacity="0.20"/>
+      <stop offset="56%" stop-color="white" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="tl-vignette-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111827" stop-opacity="0"/>
+      <stop offset="62%" stop-color="#111827" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#111827" stop-opacity="0.14"/>
+    </linearGradient>
+    <pattern id="tl-tex" patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(24)">
+      <line x1="0" y1="0" x2="0" y2="10" stroke="white" stroke-opacity="0.08" stroke-width="1"/>
+      <circle cx="7" cy="2" r="0.7" fill="white" fill-opacity="0.08"/>
+    </pattern>
+    <filter id="tl-shadow" x="-8%" y="-90%" width="122%" height="280%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" flood-color="#0f172a" flood-opacity="0.26"/>
+      <feDropShadow dx="0" dy="4.5" stdDeviation="4.2" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <clipPath id="tl-clip">
+      <path d="${timelinePath}"/>
+    </clipPath>
+  </defs>\n`;
+
+  // Render the full timeline shape (body + head) with one visual style.
+  s += `<g filter="url(#tl-shadow)"><path d="${timelinePath}" fill="url(#tl-base-grad)"/></g>\n`;
+
+  for (const it of mapped) {
+    if (it.type !== 'period') continue;
+    const px = Math.floor(it.x);
+    const pw = Math.max(2, Math.ceil(it.x2) - px + 1);
+    s += `<rect x="${px}" y="${AY1}" width="${pw}" height="${AH}" fill="${xa(it.color)}" clip-path="url(#tl-clip)"/>\n`;
+  }
+
+  s += `<path d="${timelinePath}" fill="url(#tl-shine-grad)"/>\n`;
+  s += `<path d="${timelinePath}" fill="url(#tl-tex)"/>\n`;
+  s += `<path d="${timelinePath}" fill="url(#tl-vignette-grad)"/>\n`;
+  s += `<path d="M ${ML+1.2} ${AY1+1.2} L ${ax-0.8} ${AY1+1.2} L ${ax+9.8} ${AY} L ${ax-0.8} ${AY2-1.2} L ${ML+1.2} ${AY2-1.2} Z" fill="none" stroke="white" stroke-opacity="0.26" stroke-width="1"/>\n`;
+  s += `<path d="${timelinePath}" fill="none" stroke="#7f8da3" stroke-width=".8"/>\n`;
+
+  for (const tk of ticks) {
+    s += `<line x1="${tk.x.toFixed(1)}" y1="${AY2}" x2="${tk.x.toFixed(1)}" y2="${AY2+8}" stroke="#9ca3af" stroke-width="1"/>\n`;
+  }
+
+  for (const it of mapped) {
+    if (it.type !== 'event') continue;
+    s += `<line x1="${it.x.toFixed(1)}" y1="${AY1-3}" x2="${it.x.toFixed(1)}" y2="${AY2+3}" stroke="${xa(it.color)}" stroke-width="2.5"/>\n`;
+    s += `<circle cx="${it.x.toFixed(1)}" cy="${AY}" r="5" fill="${xa(it.color)}" stroke="white" stroke-width="1.5"/>\n`;
+  }
+
+  // Pass 1 — connectors only (drawn before labels so labels appear on top)
+  for (const p of placed) {
+    const {it, cx, lx, lw, lh, ly, side} = p;
+    const col = xa(it.color || '#374151');
+    const connY1 = side === 'above' ? ly + TAG_H : ly;
+    const connY2 = side === 'above' ? AY1 - 2 : AY2 + 2;
+    const connOpacity = it.type === 'event' ? '' : ' opacity=".45"';
+    s += `<line x1="${cx.toFixed(1)}" y1="${connY1.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${connY2}" stroke="${col}" stroke-width="2.5"${connOpacity}/>\n`;
+  }
+
+  // Pass 2 — label blocks (rendered on top of all connectors)
+  for (const p of placed) {
+    const {it, cx, lx, lw, lh, ly, lines, side, dateTag, tagContentW, lp, tgap} = p;
+    const col = xa(it.color || '#374151');
+    const bgFill = it.type === 'period' ? col : 'white';
+    const textFill = it.type === 'period' ? textOnColor(it.color) : '#1f2937';
+    const connY1 = side === 'above' ? ly + lh : ly;
+    const connY2 = side === 'above' ? AY1 - 2 : AY2 + 2;
+
+    if (it.url) s += `<a href="${xa(it.url)}" class="lbl" target="_blank">\n`;
+
+    if (it.type === 'event') {
+      // ── Event (above): [tag pill] [text to the right] ──────────────────────
+      // Split halo: two rects leaving a 4px gap at cx so own connector stays visible
+      const haloL = cx - 2 - (lx - 3);
+      const haloR = lx + lw + 3 - (cx + 2);
+      s += `<rect x="${(lx-3).toFixed(1)}" y="${(ly-3).toFixed(1)}" width="${haloL.toFixed(1)}" height="${(lh+6).toFixed(1)}" fill="white"/>\n`;
+      s += `<rect x="${(cx+2).toFixed(1)}" y="${(ly-3).toFixed(1)}" width="${haloR.toFixed(1)}" height="${(lh+6).toFixed(1)}" fill="white"/>\n`;
+      s += `<rect x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" width="${tagContentW.toFixed(1)}" height="${TAG_H}" fill="${col}" rx="3"/>\n`;
+      const tagTextFill = textOnColor(it.color || '#374151');
+      s += `<text x="${(lx+TAG_HP).toFixed(1)}" y="${(ly+TAG_H-4).toFixed(1)}" font-size="${TAG_FONT}" fill="${tagTextFill}">${xt(dateTag)}</text>\n`;
+      const textX = lx + tagContentW + TAG_HP;
+      const uline = it.url ? ' text-decoration="underline"' : '';
+      for (let i = 0; i < lines.length; i++) {
+        const ty = ly + TAG_H - 4 + i * LLH;
+        s += `<text x="${textX.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${LF}" fill="#1f2937"${uline}>${xt(lines[i])}</text>\n`;
+      }
+    } else {
+      // ── Period (below): block with tag on top, text below ──────────────────
+      s += `<rect class="lb" x="${(lx-lp).toFixed(1)}" y="${ly.toFixed(1)}" width="${(lw+lp*2).toFixed(1)}" height="${lh.toFixed(1)}" fill="${bgFill}" rx="3"/>\n`;
+      const tagY = ly + lp;
+      const tagX = lx - lp + 2;
+      const tagBgColor = darkenColor(it.color || '#374151', 0.20);
+      s += `<rect x="${tagX.toFixed(1)}" y="${tagY.toFixed(1)}" width="${tagContentW.toFixed(1)}" height="${TAG_H}" fill="${xa(tagBgColor)}" rx="3"/>\n`;
+      const tagTextFill = textOnColor(tagBgColor);
+      s += `<text x="${(tagX+TAG_HP).toFixed(1)}" y="${(tagY+TAG_H-4).toFixed(1)}" font-size="${TAG_FONT}" fill="${tagTextFill}">${xt(dateTag)}</text>\n`;
+      const uline = it.url ? ' text-decoration="underline"' : '';
+      for (let i = 0; i < lines.length; i++) {
+        const ty = ly + lp + TAG_H + tgap + (i + 0.82) * LLH;
+        s += `<text x="${lx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${LF}" fill="${textFill}"${uline}>${xt(lines[i])}</text>\n`;
+      }
+    }
+
+    if (it.url) s += `</a>\n`;
+  }
+
+  // Year numbers last — on top of connectors
+  for (const tk of ticks) {
+    s += `<text x="${tk.x.toFixed(1)}" y="${AY2+20}" text-anchor="middle" font-size="12" fill="#6b7280">${tk.y}</text>\n`;
+  }
+
+  s += '</svg>';
+  return s;
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let items = [], activeTab = 'table', debTimer = null;
+
+function setTimelineWidth(v) {
+  svgW = +v;
+  document.getElementById('width-disp').textContent = v;
+  render();
+}
+
+function render() {
+  document.getElementById('svg-out').innerHTML = buildSVG(items);
+  try { localStorage.setItem('frise_data', toCSV(items)); } catch(e) {}
+}
+function schedRender() {
+  clearTimeout(debTimer);
+  debTimer = setTimeout(render, 300);
+}
+
+// ── Text tab ─────────────────────────────────────────────────────────────────
+document.getElementById('csv-input').addEventListener('input', function() {
+  items = parseCSV(this.value);
+  schedRender();
+});
+
+// ── Table tab ────────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  items.forEach((it, i) => {
+    const tr = document.createElement('tr');
+    const isP = it.type === 'period';
+    const d1 = isP ? fmtDate(it.start) : fmtDate(it.date);
+    const d2 = isP ? fmtDate(it.end) : '';
+    tr.innerHTML = `
+<td><input type="checkbox" ${selectedRows.has(i)?'checked':''} onchange="toggleRowSelect(${i},this.checked)"></td>
+<td><button class="btn-type ${isP?'period':'event'}" onclick="toggleType(${i})">${isP?'Période':'Événement'}</button></td>
+<td><input data-i="${i}" data-f="d1" value="${xa(d1)}" onchange="cellChange(this)"/></td>
+<td><input data-i="${i}" data-f="d2" value="${xa(d2)}" onchange="cellChange(this)"${!isP?' disabled style="opacity:.35"':''}></td>
+<td><input data-i="${i}" data-f="label" value="${xa(it.label)}" oninput="cellChange(this)"/></td>
+<td><div class="color-cell">
+  <button class="color-swatch-btn" style="background:${xa(it.color)}" onclick="toggleColorPicker(${i},event)"></button>
+</div></td>
+<td><input data-i="${i}" data-f="url" value="${xa(it.url||'')}" oninput="cellChange(this)" placeholder="https://…"/></td>
+<td><button class="btn-del" onclick="delRow(${i})">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+const COLOR_PALETTE = [
+  // Whites & very light
+  'white','snow','floralwhite','ivory','lightyellow','lightcyan','aliceblue','lavenderblush','lavender','honeydew',
+  // Pinks & roses
+  'lightpink','pink','mistyrose','lightsalmon','salmon','hotpink','deeppink','palevioletred','mediumvioletred','crimson',
+  // Reds
+  'tomato','orangered','red','firebrick','darkred','coral','indianred','brown','maroon','rosybrown',
+  // Oranges & yellows
+  'orange','darkorange','gold','yellow','lemonchiffon','khaki','darkkhaki','yellowgreen','greenyellow','peachpuff',
+  // Greens
+  'palegreen','lightgreen','limegreen','lime','mediumspringgreen','springgreen','mediumseagreen','seagreen','green','darkgreen',
+  // Teals & cyans
+  'aquamarine','mediumaquamarine','turquoise','mediumturquoise','lightseagreen','teal','darkcyan','cadetblue','cyan','lightcyan',
+  // Blues
+  'lightblue','lightskyblue','skyblue','deepskyblue','cornflowerblue','dodgerblue','steelblue','royalblue','mediumblue','navy',
+  // Purples & violets
+  'plum','violet','orchid','mediumpurple','blueviolet','darkorchid','darkviolet','purple','indigo','darkslateblue',
+  // Browns & tans
+  'burlywood','tan','sandybrown','peru','goldenrod','darkgoldenrod','sienna','saddlebrown','chocolate','wheat',
+  // Grays & blacks
+  'whitesmoke','lightgray','silver','darkgray','gray','slategray','dimgray','darkslategray','#1f2937','black',
+];
+
+let _cpTarget = null;
+const selectedRows = new Set();
+
+function toggleRowSelect(i, checked) {
+  if (checked) selectedRows.add(i); else selectedRows.delete(i);
+  updateSelectionUI();
+}
+
+function toggleSelectAll(checked) {
+  if (checked) items.forEach((_, i) => selectedRows.add(i)); else selectedRows.clear();
+  renderTable(); updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const toolbar = document.getElementById('sel-toolbar');
+  const n = selectedRows.size;
+  toolbar.style.display = n > 0 ? 'flex' : 'none';
+  document.getElementById('sel-count').textContent = `${n} sélectionné${n>1?'s':''}`;
+  const chkAll = document.getElementById('chk-all');
+  if (chkAll) chkAll.indeterminate = n > 0 && n < items.length;
+  if (chkAll) chkAll.checked = n === items.length && n > 0;
+}
+
+function toggleColorPicker(i, e) {
+  e.stopPropagation();
+  const popup = document.getElementById('color-picker-popup');
+  const isOpen = popup.style.display === 'grid' && _cpTarget === i;
+  popup.style.display = 'none';
+  if (isOpen) return;
+  _cpTarget = i;
+  const cur = i === -1 ? null : items[i].color;
+  popup.innerHTML = COLOR_PALETTE.map(c =>
+    `<button class="sw${c===cur?' selected':''}" style="background:${c}" title="${c}" onclick="pickColor(${i},'${c}',event)"></button>`
+  ).join('');
+  const rect = e.currentTarget.getBoundingClientRect();
+  popup.style.left = rect.left + 'px';
+  popup.style.top = (rect.bottom + 4) + 'px';
+  popup.style.display = 'grid';
+}
+
+function pickColor(i, color, e) {
+  e.stopPropagation();
+  const targets = i === -1 ? [...selectedRows]
+    : (selectedRows.size > 0 && selectedRows.has(i) ? [...selectedRows] : [i]);
+  targets.forEach(idx => { items[idx].color = color; });
+  document.getElementById('color-picker-popup').style.display = 'none';
+  renderTable(); render();
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('color-picker-popup').style.display = 'none';
+});
+
+function toggleType(i) {
+  const it = items[i]; if (!it) return;
+  if (it.type === 'event') {
+    it.start = it.date; it.end = new Date(it.date.getTime() + 2*365*864e5);
+    delete it.date; it.type = 'period';
+  } else {
+    it.date = it.start; delete it.start; delete it.end; it.type = 'event';
+  }
+  renderTable(); render();
+}
+
+function cellChange(el) {
+  const i = +el.dataset.i, f = el.dataset.f, v = el.value;
+  const it = items[i]; if (!it) return;
+  if (f === 'type') {
+    if (v === 'period' && it.type === 'event') {
+      it.start = it.date; it.end = new Date(it.date.getTime() + 2*365*864e5);
+      delete it.date; it.type = 'period'; renderTable();
+    } else if (v === 'event' && it.type === 'period') {
+      it.date = it.start; delete it.start; delete it.end; it.type = 'event'; renderTable();
+    }
+  } else if (f === 'd1') { const d = parseDate(v); if (d) it.type==='period' ? (it.start=d) : (it.date=d); }
+  else if (f === 'd2') { if (it.type==='period') { const d=parseDate(v); if (d) it.end=d; } }
+  else if (f === 'label') it.label = v;
+  else if (f === 'color') {
+    it.color = v;
+    const dot = document.getElementById('cd'+i);
+    if (dot) dot.style.background = v;
+  }
+  else if (f === 'url') it.url = v;
+  schedRender();
+  document.getElementById('csv-input').value = toCSV(items);
+}
+
+function delRow(i) {
+  items.splice(i, 1);
+  renderTable(); render();
+  document.getElementById('csv-input').value = toCSV(items);
+}
+
+function addRow() {
+  items.push({ type:'event', date:new Date(), label:'Nouvel événement', color:'steelblue', url:'' });
+  renderTable(); render();
+}
+
+function clearAll() {
+  if (!confirm('Effacer toutes les données ?')) return;
+  items = [];
+  renderTable(); render();
+}
+
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  if (tab === activeTab) return;
+  activeTab = tab;
+  if (tab === 'table') {
+    items = parseCSV(document.getElementById('csv-input').value);
+    renderTable();
+  } else {
+    document.getElementById('csv-input').value = toCSV(items);
+  }
+  document.getElementById('btn-text').classList.toggle('active', tab==='text');
+  document.getElementById('btn-table').classList.toggle('active', tab==='table');
+  document.getElementById('pane-text').classList.toggle('active', tab==='text');
+  document.getElementById('pane-table').classList.toggle('active', tab==='table');
+}
+
+// ── Draggable divider ─────────────────────────────────────────────────────────
+(function() {
+  const divider   = document.getElementById('divider');
+  const topPanel  = document.getElementById('top-panel');
+  const layout    = document.getElementById('layout');
+  let dragging = false, startY = 0, startH = 0;
+
+  divider.addEventListener('mousedown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startH = topPanel.getBoundingClientRect().height;
+    divider.classList.add('active');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const layoutH = layout.getBoundingClientRect().height;
+    const newH = Math.max(60, Math.min(startH + (e.clientY - startY), layoutH - 120));
+    topPanel.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
+// ── Copy HTML ────────────────────────────────────────────────────────────────
+function copyHTML() {
+  const el = document.querySelector('#svg-out svg');
+  if (!el) return;
+
+  // Serialize current data and include it as an HTML comment header.
+  const csvRaw = toCSV(items) || '';
+  const csvSafe = csvRaw.replace(/-->/g, '--&gt;').replace(/--/g, '- -');
+  const csvComment = `<!-- CSV_DATA\n${csvSafe}\n-->\n`;
+  const html = csvComment + el.outerHTML;
+
+  const ok = () => {
+    const fb = document.getElementById('copy-ok');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2500);
+  };
+  if (navigator.clipboard && location.protocol !== 'file:') {
+    navigator.clipboard.writeText(html).then(ok);
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = html; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta); ok();
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+const _saved = (() => { try { return localStorage.getItem('frise_data'); } catch(e) {} })();
+const _csv = _saved != null ? _saved : DEFAULT;
+document.getElementById('csv-input').value = _csv;
+items = parseCSV(_csv);
+renderTable();
+render();
+
+// Initial split: ~40% for top panel
+const initH = Math.round((window.innerHeight - 36) * 0.40);
+document.getElementById('top-panel').style.height = initH + 'px';
+</script>
+<div id="color-picker-popup"></div>
+</body>
+</html>
+
