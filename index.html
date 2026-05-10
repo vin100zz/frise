@@ -466,11 +466,40 @@ function buildSVG(items) {
   // Render the full timeline shape (body + head) with one visual style.
   s += `<g filter="url(#tl-shadow)"><path d="${timelinePath}" fill="url(#tl-base-grad)"/></g>\n`;
 
-  for (const it of mapped) {
-    if (it.type !== 'period') continue;
-    const px = Math.floor(it.x);
-    const pw = Math.max(2, Math.ceil(it.x2) - px + 1);
-    s += `<rect x="${px}" y="${AY1}" width="${pw}" height="${AH}" fill="${xa(it.color)}" clip-path="url(#tl-clip)"/>\n`;
+  // Render periods by elementary x-segments so overlaps can be split vertically.
+  const periodRuns = mapped
+    .map((it, order) => ({ it, order }))
+    .filter(x => x.it.type === 'period')
+    .map(x => ({
+      color: x.it.color,
+      order: x.order,
+      x1: Math.min(x.it.x, x.it.x2),
+      x2: Math.max(x.it.x, x.it.x2)
+    }));
+
+  if (periodRuns.length) {
+    const cuts = [...new Set(periodRuns.flatMap(p => [p.x1, p.x2]))].sort((a, b) => a - b);
+
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const a = cuts[i], b = cuts[i + 1];
+      if (b - a < 0.25) continue;
+
+      const mid = (a + b) / 2;
+      const active = periodRuns
+        .filter(p => p.x1 <= mid && p.x2 >= mid)
+        .sort((p1, p2) => p1.order - p2.order);
+      if (!active.length) continue;
+
+      const px = Math.floor(a);
+      const pw = Math.max(1, Math.ceil(b) - px);
+
+      const bands = active.length;
+      for (let j = 0; j < bands; j++) {
+        const y1 = AY1 + (AH * j) / bands;
+        const y2 = AY1 + (AH * (j + 1)) / bands;
+        s += `<rect x="${px}" y="${y1}" width="${pw}" height="${y2 - y1}" fill="${xa(active[j].color)}" clip-path="url(#tl-clip)"/>\n`;
+      }
+    }
   }
 
   s += `<path d="${timelinePath}" fill="url(#tl-shine-grad)"/>\n`;
